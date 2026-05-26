@@ -2,14 +2,14 @@ import { defineAstroPaperConfig } from "./src/types/config";
 
 export default defineAstroPaperConfig({
   site: {
-    url: "https://astro-paper.pages.dev/",
-    title: "AstroPaper",
-    description: "A minimal, responsive and SEO-friendly Astro blog theme.",
-    author: "Sat Naing",
-    profile: "https://satna.ing",
+    url: "https://auto-simu.vercel.app/",
+    title: "FEA Auto Analysis",
+    description: "Automated structural FEA analysis — upload CAD, get results powered by ANSYS + Claude AI.",
+    author: "mmoonshinee",
+    profile: "https://github.com/mmoonshinee",
     ogImage: "default-og.jpg",
     lang: "en",
-    timezone: "Asia/Bangkok",
+    timezone: "Asia/Shanghai",
     dir: "ltr",
   },
   posts: {

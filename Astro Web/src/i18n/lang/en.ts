@@ -8,6 +8,7 @@ export default {
     about: "About",
     archives: "Archives",
     search: "Search",
+    tools: "FEA Tools",
   },
   post: {
     publishedAt: "Published at",

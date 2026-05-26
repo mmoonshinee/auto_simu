@@ -2,6 +2,11 @@
 *.mechdat
 *_Mech_Files/
 
+# Python
+__pycache__/
+*.pyc
+uploads/
+
 # Node
 node_modules/
 dist/
@@ -11,3 +16,8 @@ dist/
 
 # Claude Code internal
 .claude/
+
+# Environment files (API keys)
+.env
+*.env
+!*.env.example

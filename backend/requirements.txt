@@ -1,0 +1,6 @@
+fastapi==0.119.1
+uvicorn[standard]==0.37.0
+python-multipart==0.0.20
+openai>=1.0.0
+python-dotenv==1.2.1
+aiofiles==24.1.0

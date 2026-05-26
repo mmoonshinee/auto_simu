@@ -1,0 +1,9 @@
+pyproject.toml
+ansys_workbench_mcp.egg-info/PKG-INFO
+ansys_workbench_mcp.egg-info/SOURCES.txt
+ansys_workbench_mcp.egg-info/dependency_links.txt
+ansys_workbench_mcp.egg-info/requires.txt
+ansys_workbench_mcp.egg-info/top_level.txt
+workbench_plugin/main.py
+workbench_plugin/mechanical_queue_processor.py
+workbench_plugin/mechanical_socket_timer_v7.py

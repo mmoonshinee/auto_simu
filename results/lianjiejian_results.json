@@ -1,0 +1,11 @@
+{
+  "status": "completed",
+  "part": "lianjiejian",
+  "material": "6061 Aluminum",
+  "stress_min": "18082.492677747243 [Pa]",
+  "stress_max": "125240964.83819517 [Pa]",
+  "strain_min": "2.5468299502785363E-07 [m m^-1]",
+  "strain_max": "0.0017639572144930215 [m m^-1]",
+  "deform_min": "0 [m]",
+  "deform_max": "0.0012480416120761153 [m]"
+}

@@ -1,0 +1,8 @@
+{
+  "status": "completed",
+  "solved": true,
+  "stress_min": "7.6341352346016844 [Pa]",
+  "stress_max": "88230628.900373772 [Pa]",
+  "strain_min": ".8170676692368195E-11 [m m^-1]",
+  "strain_max": ".00044115314051238472 [m m^-1]"
+}

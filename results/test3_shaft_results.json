@@ -1,0 +1,19 @@
+{
+  "part": "TEST3_轴",
+  "material": "Structural Steel (结构钢)",
+  "yield_strength_MPa": 250.0,
+  "fixed_support": "Face 53 (Y=0 end cap)",
+  "force": "2000N -Z on Face 62 (Y=120 end cap)",
+  "load_type": "Cantilever bending",
+  "element_size": "3mm",
+  "mesh_resolution": 5,
+  "max_stress_MPa": 484.08,
+  "min_stress_MPa": 5.54,
+  "max_deformation_mm": 1.0567,
+  "max_strain_mm_per_mm": 0.00242,
+  "safety_factor": 0.52,
+  "safety_factor_note": "Based on yield 250.0MPa / max stress 484.08MPa",
+  "solve_time_s": 4.4,
+  "status": "WARNING: Stress exceeds yield",
+  "mechdat": "test3_shaft_result_20260524_161019.mechdat"
+}

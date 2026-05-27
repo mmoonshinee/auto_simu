@@ -11,27 +11,43 @@ export const GET: APIRoute = async ({ request }) => {
       return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
     }
 
-    const { blobs } = await list({ limit: 1000, prefix: "fea-jobs/" });
-    const jobBlobs = blobs.filter((b) => b.pathname.endsWith("/job.json"));
-
-    const jobs = await Promise.all(
-      jobBlobs.map(async (b) => {
-        try {
-          const res = await fetch(b.downloadUrl);
-          return await res.json();
-        } catch {
-          return null;
+    // Try reading master index first (fast path)
+    let allJobs: any[] = [];
+    const indexBlobName = "fea-jobs/index.json";
+    try {
+      const { blobs: indexBlobs } = await list({ limit: 1, prefix: indexBlobName });
+      if (indexBlobs.length > 0) {
+        const res = await fetch(indexBlobs[0].downloadUrl);
+        if (res.ok) {
+          allJobs = await res.json().catch(() => []);
         }
-      })
-    );
+      }
+    } catch {
+      // Fallback: scan individual job files
+    }
 
-    const validJobs = jobs.filter(Boolean);
-    validJobs.sort((a: any, b: any) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+    // Fallback: if index is empty, scan for individual job files
+    if (allJobs.length === 0) {
+      const { blobs } = await list({ limit: 1000, prefix: "fea-jobs/" });
+      const jobBlobs = blobs.filter((b) => b.pathname.endsWith("/job.json"));
+      const jobs = await Promise.all(
+        jobBlobs.map(async (b) => {
+          try {
+            const res = await fetch(b.downloadUrl);
+            return await res.json();
+          } catch {
+            return null;
+          }
+        })
+      );
+      allJobs = jobs.filter(Boolean);
+    }
 
-    const pending = validJobs.filter((j: any) => j.status === "pending");
+    allJobs.sort((a: any, b: any) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+    const pending = allJobs.filter((j: any) => j.status === "pending");
 
     return new Response(JSON.stringify({
-      total: validJobs.length,
+      total: allJobs.length,
       pending: pending.length,
       jobs: pending.map((j: any) => ({
         jobId: j.jobId,

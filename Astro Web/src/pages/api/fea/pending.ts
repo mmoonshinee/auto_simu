@@ -1,27 +1,23 @@
 import type { APIRoute } from "astro";
 import { list } from "@vercel/blob";
 
-// Auth: requires FEA_API_KEY header for polling
 const FEA_API_KEY = import.meta.env.FEA_API_KEY || process.env.FEA_API_KEY || "fea-local-api-key-change-me";
 
 export const GET: APIRoute = async ({ request }) => {
   try {
     const auth = request.headers.get("authorization") || "";
     const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-    const expected = FEA_API_KEY;
-
-    if (!expected || token !== expected) {
+    if (!FEA_API_KEY || token !== FEA_API_KEY) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
     }
 
-    // List all job metadata files
     const { blobs } = await list({ prefix: "fea-jobs/" });
     const jobBlobs = blobs.filter((b) => b.pathname.endsWith("/job.json"));
 
     const jobs = await Promise.all(
       jobBlobs.map(async (b) => {
         try {
-          const res = await fetch(b.url);
+          const res = await fetch(b.downloadUrl);
           return await res.json();
         } catch {
           return null;
@@ -43,7 +39,6 @@ export const GET: APIRoute = async ({ request }) => {
         material: j.material,
         forceDirection: j.forceDirection,
         forceMagnitude: j.forceMagnitude,
-        stepBlobUrl: j.stepBlobUrl,
         createdAt: j.createdAt,
       })),
     }), {

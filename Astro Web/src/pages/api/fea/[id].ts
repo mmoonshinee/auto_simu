@@ -22,8 +22,7 @@ export const GET: APIRoute = async ({ params }) => {
     }
     const job = await jobRes.json();
 
-    // Build image API URLs
-    const baseUrl = new URL(jobRes.url).origin;
+    // Build image API URLs (relative paths — work on any domain)
     const images: Record<string, string> = {};
 
     const prefix = `fea-jobs/${id}/`;
@@ -31,7 +30,7 @@ export const GET: APIRoute = async ({ params }) => {
     for (const b of blobs) {
       if (b.pathname.endsWith(".png") || b.pathname.endsWith(".jpg")) {
         const imgName = b.pathname.split("/").pop()?.replace(/\.(png|jpg)$/, "") || "";
-        images[imgName] = `${baseUrl}/api/fea/${id}/image/${imgName}`;
+        images[imgName] = `/api/fea/${id}/image/${imgName}`;
       }
     }
 
@@ -125,7 +124,7 @@ export const POST: APIRoute = async ({ params, request }) => {
 async function findJobBlob(jobId: string): Promise<string | null> {
   try {
     const { blobs } = await list({ prefix: `fea-jobs/${jobId}/job.json` });
-    if (blobs.length > 0) return blobs[0].url;
+    if (blobs.length > 0) return blobs[0].downloadUrl;
     return null;
   } catch {
     return null;

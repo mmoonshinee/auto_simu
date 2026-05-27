@@ -30,7 +30,7 @@ export const POST: APIRoute = async ({ request }) => {
       material,
       forceDirection,
       forceMagnitude: parseFloat(forceMagnitude),
-      stepBlobUrl: stepBlob.url,
+      stepBlobUrl: stepBlob.downloadUrl,
       createdAt: new Date().toISOString(),
       results: null,
       images: null,

@@ -11,7 +11,7 @@ export const GET: APIRoute = async ({ request }) => {
       return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
     }
 
-    const { blobs } = await list({ prefix: "fea-jobs/" });
+    const { blobs } = await list({ limit: 1000, prefix: "fea-jobs/" });
     const jobBlobs = blobs.filter((b) => b.pathname.endsWith("/job.json"));
 
     const jobs = await Promise.all(

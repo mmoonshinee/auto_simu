@@ -123,7 +123,7 @@ export const POST: APIRoute = async ({ params, request }) => {
 
 async function findJobBlob(jobId: string): Promise<string | null> {
   try {
-    const { blobs } = await list({ prefix: `fea-jobs/${jobId}/job.json` });
+    const { blobs } = await list({ limit: 1000, prefix: `fea-jobs/${jobId}/job.json` });
     if (blobs.length > 0) return blobs[0].downloadUrl;
     return null;
   } catch {

@@ -8,7 +8,7 @@ export const GET: APIRoute = async ({ params }) => {
       return new Response(JSON.stringify({ error: "Missing params" }), { status: 400 });
     }
 
-    const { blobs } = await list({ prefix: `fea-jobs/${id}/` });
+    const { blobs } = await list({ limit: 1000, prefix: `fea-jobs/${id}/` });
     for (const b of blobs) {
       const pathName = b.pathname.split("/").pop() || "";
       const baseName = pathName.replace(/\.(png|jpg|jpeg)$/, "");

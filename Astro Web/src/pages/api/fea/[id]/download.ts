@@ -17,7 +17,7 @@ export const GET: APIRoute = async ({ params, request }) => {
     }
 
     // Find job metadata
-    const { blobs: jobBlobs } = await list({ prefix: `fea-jobs/${id}/job.json` });
+    const { blobs: jobBlobs } = await list({ limit: 1000, prefix: `fea-jobs/${id}/job.json` });
     if (jobBlobs.length === 0) {
       return new Response(JSON.stringify({ error: "Job not found" }), { status: 404 });
     }
@@ -26,7 +26,7 @@ export const GET: APIRoute = async ({ params, request }) => {
     const job = await jobRes.json();
 
     // Find the STEP file in Blob
-    const { blobs: allBlobs } = await list({ prefix: `fea-jobs/${id}/` });
+    const { blobs: allBlobs } = await list({ limit: 1000, prefix: `fea-jobs/${id}/` });
     let stepDownloadUrl = "";
     for (const b of allBlobs) {
       if (b.pathname.endsWith(".step") || b.pathname.endsWith(".stp")) {

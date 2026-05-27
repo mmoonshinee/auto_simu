@@ -1,0 +1,100 @@
+{
+	"version": 3,
+	"routes": [
+		{
+			"handle": "filesystem"
+		},
+		{
+			"src": "^/_astro/(.*)$",
+			"headers": {
+				"cache-control": "public, max-age=31536000, immutable"
+			},
+			"continue": true
+		},
+		{
+			"src": "^/_server-islands/([^/]+?)/?$",
+			"dest": "_render"
+		},
+		{
+			"src": "^/_image/?$",
+			"dest": "_render"
+		},
+		{
+			"src": "^/404/?$",
+			"dest": "_render"
+		},
+		{
+			"src": "^/about/?$",
+			"dest": "_render"
+		},
+		{
+			"src": "^/api/chat/?$",
+			"dest": "_render"
+		},
+		{
+			"src": "^/api/fea/pending/?$",
+			"dest": "_render"
+		},
+		{
+			"src": "^/api/fea/upload/?$",
+			"dest": "_render"
+		},
+		{
+			"src": "^/api/fea/([^/]+?)/?$",
+			"dest": "_render"
+		},
+		{
+			"src": "^/archives/?$",
+			"dest": "_render"
+		},
+		{
+			"src": "^/og\\.png$",
+			"dest": "_render"
+		},
+		{
+			"src": "^/posts(?:/(.*?))?/index\\.png/?$",
+			"dest": "_render"
+		},
+		{
+			"src": "^/posts(?:/(.*?))?/?$",
+			"dest": "_render"
+		},
+		{
+			"src": "^/posts(?:/(.*?))?/?$",
+			"dest": "_render"
+		},
+		{
+			"src": "^/robots\\.txt$",
+			"dest": "_render"
+		},
+		{
+			"src": "^/rss\\.xml$",
+			"dest": "_render"
+		},
+		{
+			"src": "^/search/?$",
+			"dest": "_render"
+		},
+		{
+			"src": "^/tags/([^/]+?)(?:/(.*?))?/?$",
+			"dest": "_render"
+		},
+		{
+			"src": "^/tags/?$",
+			"dest": "_render"
+		},
+		{
+			"src": "^/upload/?$",
+			"dest": "_render"
+		},
+		{
+			"src": "^/$",
+			"dest": "_render"
+		},
+		{
+			"src": "^/.*$",
+			"dest": "_render",
+			"status": 404
+		}
+	]
+}

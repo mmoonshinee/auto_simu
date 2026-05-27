@@ -1,24 +1,42 @@
 """
 FastAPI backend for ANSYS FEA Automation Web Service.
-Handles file upload, AI analysis (DeepSeek / Claude), and FEA pipeline orchestration.
+Handles file upload, AI analysis, and REAL FEA pipeline orchestration via ANSYS Mechanical.
 """
-
 import os
 import json
 import uuid
+import shutil
+import subprocess
+import threading
+import time
 from pathlib import Path
 from datetime import datetime
 from typing import Optional
 
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from openai import OpenAI
 
 load_dotenv()
 
-app = FastAPI(title="ANSYS FEA Automation API", version="1.0.0")
+app = FastAPI(title="ANSYS FEA Automation API", version="2.0.0")
+
+# ── Auth ───────────────────────────────────────────────────
+BACKEND_API_KEY = os.getenv("BACKEND_API_KEY", "")
+security = HTTPBearer(auto_error=False)
+
+
+def require_auth(credentials: HTTPAuthorizationCredentials | None = Depends(security)):
+    """Require Bearer token auth if BACKEND_API_KEY is configured."""
+    if not BACKEND_API_KEY:
+        return  # No auth configured — allow all (dev mode)
+    if credentials is None:
+        raise HTTPException(401, "Authorization header required")
+    if credentials.credentials != BACKEND_API_KEY:
+        raise HTTPException(403, "Invalid API key")
 
 app.add_middleware(
     CORSMiddleware,
@@ -28,11 +46,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "./uploads"))
+# ── Paths ──────────────────────────────────────────────────
+BASE_DIR = Path(__file__).resolve().parent.parent
+UPLOAD_DIR = BASE_DIR / "uploads"
+RESULTS_DIR = BASE_DIR / "results"
+FEA_SCRIPT = BASE_DIR / "run_generic_fea.py"
+PYTHON_EXE = r"C:\Users\admin\AppData\Local\Programs\Python\Python311\python.exe"
+
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+
 MAX_UPLOAD_SIZE_MB = int(os.getenv("MAX_UPLOAD_SIZE_MB", "50"))
 
-# Provider config — pick based on which API key is set
+# ── AI Provider ────────────────────────────────────────────
 DEEPSEEK_KEY = os.getenv("DEEPSEEK_API_KEY")
 ANTHROPIC_KEY = os.getenv("ANTHROPIC_API_KEY")
 
@@ -41,7 +67,7 @@ if DEEPSEEK_KEY:
     _model = os.getenv("AI_MODEL", "deepseek-chat")
     _provider = "deepseek"
 elif ANTHROPIC_KEY:
-    _client = OpenAI(api_key=ANTHROPIC_KEY)  # fallback, won't work with Anthropic
+    _client = OpenAI(api_key=ANTHROPIC_KEY)
     _model = "claude-sonnet-4-6"
     _provider = "anthropic"
 else:
@@ -57,27 +83,36 @@ SYSTEM_PROMPT = (
     "suggest load cases, and help interpret analysis results."
 )
 
+# ── Job Store (in-memory) ──────────────────────────────────
+jobs: dict = {}  # job_id -> {status, step_path, results, created_at, ...}
+jobs_lock = threading.Lock()
+
 
 def get_client():
     if _client is None:
-        raise HTTPException(500, "No AI provider configured — set DEEPSEEK_API_KEY or ANTHROPIC_API_KEY")
+        raise HTTPException(500, "No AI provider configured")
     return _client, _model
 
 
-# ── Health ────────────────────────────────────────────────
+# ── Health ─────────────────────────────────────────────────
 
 
 @app.get("/api/health")
 async def health():
+    fea_available = os.path.exists(FEA_SCRIPT)
+    mech_running = "AnsysWBU" in subprocess.getoutput("tasklist | findstr AnsysWBU")
     return {
         "status": "ok",
         "provider": _provider or "none",
         "model": _model or "none",
+        "fea_script": fea_available,
+        "mechanical_running": mech_running,
+        "active_jobs": len([j for j in jobs.values() if j["status"] in ("pending", "running")]),
         "timestamp": datetime.now().isoformat(),
     }
 
 
-# ── File Upload ───────────────────────────────────────────
+# ── File Upload ────────────────────────────────────────────
 
 
 @app.post("/api/upload")
@@ -87,11 +122,11 @@ async def upload_file(file: UploadFile = File(...)):
                    ".zip", ".pdf", ".txt", ".csv", ".json"}:
         raise HTTPException(400, f"Unsupported file type: {ext}")
 
-    size = 0
     file_id = uuid.uuid4().hex[:12]
     safe_name = f"{file_id}_{file.filename}"
     dest = UPLOAD_DIR / safe_name
 
+    size = 0
     with open(dest, "wb") as f:
         while chunk := await file.read(1024 * 1024):
             size += len(chunk)
@@ -110,7 +145,215 @@ async def upload_file(file: UploadFile = File(...)):
     }
 
 
-# ── AI Chat ───────────────────────────────────────────────
+# ── FEA Run ────────────────────────────────────────────────
+
+
+def _run_fea_job(job_id: str, step_path: str, material: str, force_dir: str, force_n: float):
+    """Background thread: run the FEA script and update job status."""
+    with jobs_lock:
+        jobs[job_id]["status"] = "running"
+        jobs[job_id]["started_at"] = datetime.now().isoformat()
+
+    try:
+        cmd = [
+            PYTHON_EXE, str(FEA_SCRIPT), step_path,
+            "--material", material,
+            "--force-direction", force_dir,
+            "--force-magnitude", str(force_n),
+            "--job-id", job_id,
+        ]
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600, cwd=str(BASE_DIR))
+
+        # Find JSON result block in output
+        stdout = proc.stdout
+        result = None
+        marker = "__JSON_RESULT__"
+        if marker in stdout:
+            json_start = stdout.index(marker) + len(marker)
+            try:
+                result = json.loads(stdout[json_start:].strip())
+            except json.JSONDecodeError:
+                pass
+
+        # Also try reading the results file
+        result_file = RESULTS_DIR / f"{job_id}_results.json"
+        if result is None and result_file.exists():
+            try:
+                result = json.loads(result_file.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+
+        with jobs_lock:
+            if result:
+                jobs[job_id]["status"] = result.get("status", "completed")
+                jobs[job_id]["results"] = result
+            else:
+                jobs[job_id]["status"] = "failed"
+                jobs[job_id]["error"] = proc.stderr[:500] if proc.stderr else "No results"
+            jobs[job_id]["finished_at"] = datetime.now().isoformat()
+            jobs[job_id]["stdout"] = stdout[-2000:]
+            jobs[job_id]["stderr"] = proc.stderr[-1000:] if proc.stderr else ""
+
+    except subprocess.TimeoutExpired:
+        with jobs_lock:
+            jobs[job_id]["status"] = "timeout"
+            jobs[job_id]["error"] = "FEA exceeded 10 minute timeout"
+    except Exception as e:
+        with jobs_lock:
+            jobs[job_id]["status"] = "failed"
+            jobs[job_id]["error"] = str(e)[:500]
+
+
+@app.post("/api/fea/run")
+async def fea_run(
+    _auth=Depends(require_auth),
+    file: UploadFile = File(...),
+    material: str = Form("Structural Steel"),
+    force_direction: str = Form("+Z"),
+    force_magnitude: float = Form(5000),
+):
+    """Upload a STEP file and start FEA analysis. Returns job_id for polling."""
+    ext = Path(file.filename or "unknown").suffix.lower()
+    if ext not in {".step", ".stp", ".iges", ".igs", ".x_t", ".x_b"}:
+        raise HTTPException(400, f"Unsupported CAD format: {ext}")
+
+    if not os.path.exists(FEA_SCRIPT):
+        raise HTTPException(500, "FEA script not available on this server")
+
+    job_id = uuid.uuid4().hex[:12]
+    safe_name = f"{job_id}_{file.filename}"
+    dest = UPLOAD_DIR / safe_name
+
+    size = 0
+    with open(dest, "wb") as f:
+        while chunk := await file.read(1024 * 1024):
+            size += len(chunk)
+            if size > MAX_UPLOAD_SIZE_MB * 1024 * 1024:
+                f.close()
+                dest.unlink(missing_ok=True)
+                raise HTTPException(413, f"File exceeds {MAX_UPLOAD_SIZE_MB}MB limit")
+            f.write(chunk)
+
+    with jobs_lock:
+        jobs[job_id] = {
+            "job_id": job_id,
+            "status": "pending",
+            "filename": file.filename,
+            "step_path": str(dest),
+            "material": material,
+            "force_direction": force_direction,
+            "force_magnitude_N": force_magnitude,
+            "created_at": datetime.now().isoformat(),
+            "results": None,
+            "error": None,
+        }
+
+    thread = threading.Thread(target=_run_fea_job,
+                              args=(job_id, str(dest), material, force_direction, force_magnitude),
+                              daemon=True)
+    thread.start()
+
+    return {
+        "job_id": job_id,
+        "status": "pending",
+        "filename": file.filename,
+        "message": f"FEA job queued. Poll /api/fea/status/{job_id} for results.",
+    }
+
+
+@app.get("/api/fea/status/{job_id}")
+async def fea_status(job_id: str):
+    """Poll FEA job status. Returns results + image URLs when complete."""
+    with jobs_lock:
+        job = jobs.get(job_id)
+
+    if not job:
+        raise HTTPException(404, "Job not found")
+
+    response = {
+        "job_id": job_id,
+        "status": job["status"],
+        "filename": job.get("filename"),
+        "material": job.get("material"),
+        "created_at": job.get("created_at"),
+    }
+
+    if job["status"] in ("completed", "failed", "timeout"):
+        if job.get("results"):
+            r = job["results"]
+            response["results"] = {
+                "stress_max_MPa": r.get("stress_max_MPa"),
+                "stress_min_Pa": r.get("stress_min_Pa"),
+                "deform_max_mm": r.get("deform_max_mm"),
+                "strain_max": r.get("strain_max"),
+                "safety_factor": r.get("safety_factor"),
+                "yield_strength_MPa": r.get("yield_strength_MPa"),
+                "material": r.get("material"),
+                "fix_face_ids": r.get("fix_face_ids"),
+                "force_face_ids": r.get("force_face_ids"),
+                "force_direction": r.get("force_direction"),
+                "force_magnitude_N": r.get("force_magnitude_N"),
+            }
+            # Image URLs
+            images = r.get("images", {})
+            base_url = f"/api/results/{job_id}"
+            response["images"] = {
+                name: f"{base_url}/{name}.png"
+                for name in images
+            }
+        if job.get("error"):
+            response["error"] = job["error"]
+
+    return response
+
+
+@app.get("/api/jobs")
+async def list_jobs():
+    """List all FEA jobs (most recent first)."""
+    with jobs_lock:
+        job_list = list(jobs.values())
+
+    job_list.sort(key=lambda j: j.get("created_at", ""), reverse=True)
+    return {
+        "total": len(job_list),
+        "jobs": [
+            {
+                "job_id": j["job_id"],
+                "status": j["status"],
+                "filename": j.get("filename"),
+                "material": j.get("material"),
+                "created_at": j.get("created_at"),
+                "has_results": j.get("results") is not None,
+            }
+            for j in job_list[:50]
+        ],
+    }
+
+
+@app.get("/api/results/{job_id}/{filename}")
+async def serve_result_file(job_id: str, filename: str):
+    """Serve FEA result images and files."""
+    # Check job's image dir first
+    img_dir = RESULTS_DIR / job_id
+    file_path = img_dir / filename
+    if file_path.exists():
+        media_type_map = {
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".json": "application/json",
+        }
+        ext = file_path.suffix.lower()
+        return FileResponse(file_path, media_type=media_type_map.get(ext, "application/octet-stream"))
+
+    # Fallback: check main results dir
+    file_path2 = RESULTS_DIR / filename
+    if file_path2.exists():
+        return FileResponse(file_path2)
+
+    raise HTTPException(404, f"File not found: {filename}")
+
+
+# ── AI Chat ────────────────────────────────────────────────
 
 
 @app.post("/api/chat")
@@ -120,7 +363,6 @@ async def chat(
     conversation_id: Optional[str] = Form(None),
 ):
     client, model = get_client()
-
     user_content = _build_user_content(message, file_id)
 
     try:
@@ -144,9 +386,6 @@ async def chat(
         }
     except Exception as e:
         raise HTTPException(500, f"AI API error: {str(e)}")
-
-
-# ── AI Chat (Streaming SSE) ────────────────────────────────
 
 
 @app.post("/api/chat/stream")
@@ -178,7 +417,7 @@ async def chat_stream(
     return StreamingResponse(stream(), media_type="text/event-stream")
 
 
-# ── Helpers ───────────────────────────────────────────────
+# ── Helpers ────────────────────────────────────────────────
 
 
 def _build_user_content(message: str, file_id: Optional[str]) -> str:
@@ -217,7 +456,7 @@ def _read_file_text(path: Path) -> Optional[str]:
         return f"[Binary file: {path.name}, size={path.stat().st_size} bytes]"
 
 
-# ── Run ───────────────────────────────────────────────────
+# ── Run ────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     import uvicorn

@@ -1,11 +1,10 @@
 import type { APIRoute } from "astro";
 import OpenAI from "openai";
 
-export const POST: APIRoute = async ({ request, locals }) => {
+export const POST: APIRoute = async ({ request }) => {
   try {
     const formData = await request.formData();
     const message = formData.get("message")?.toString() || "";
-    const fileId = formData.get("file_id")?.toString();
     const fileContent = formData.get("file_content")?.toString();
 
     if (!message) {

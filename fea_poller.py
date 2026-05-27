@@ -45,7 +45,10 @@ def fetch_pending_jobs():
     try:
         resp = requests.get(
             f"{VERCEL_URL}/api/fea/pending",
-            headers={"Authorization": f"Bearer {FEA_API_KEY}"},
+            headers={
+                "Authorization": f"Bearer {FEA_API_KEY}",
+                "Origin": VERCEL_URL,
+            },
             timeout=15,
         )
         if resp.status_code == 401:
@@ -65,12 +68,7 @@ def fetch_pending_jobs():
 
 
 def download_step(job: dict) -> Path | None:
-    """Download STEP file from Vercel Blob URL."""
-    step_url = job.get("stepBlobUrl")
-    if not step_url:
-        log(f"  No stepBlobUrl in job {job.get('jobId')}")
-        return None
-
+    """Download STEP file via Vercel API (private Blob store)."""
     job_id = job["jobId"]
     filename = job.get("filename", "model.step")
     dest = UPLOAD_DIR / f"{job_id}_{filename}"
@@ -79,9 +77,19 @@ def download_step(job: dict) -> Path | None:
         log(f"  File already downloaded: {dest}")
         return dest
 
-    log(f"  Downloading: {filename}")
+    log(f"  Downloading via API: {filename}")
     try:
-        resp = requests.get(step_url, timeout=120)
+        resp = requests.get(
+            f"{VERCEL_URL}/api/fea/{job_id}/download",
+            headers={
+                "Authorization": f"Bearer {FEA_API_KEY}",
+                "Origin": VERCEL_URL,
+            },
+            timeout=120,
+        )
+        if resp.status_code == 401:
+            log(f"  Unauthorized — check FEA_API_KEY")
+            return None
         resp.raise_for_status()
         dest.write_bytes(resp.content)
         log(f"  Downloaded: {len(resp.content) / 1024:.0f} kB → {dest.name}")
@@ -163,7 +171,10 @@ def upload_results(job_id: str, results: dict):
             f"{VERCEL_URL}/api/fea/{job_id}",
             data={"result": json.dumps(results)},
             files=files,
-            headers={"Authorization": f"Bearer {FEA_API_KEY}"},
+            headers={
+                "Authorization": f"Bearer {FEA_API_KEY}",
+                "Origin": VERCEL_URL,
+            },
             timeout=60,
         )
 

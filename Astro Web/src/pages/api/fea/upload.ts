@@ -16,13 +16,13 @@ export const POST: APIRoute = async ({ request }) => {
     const jobId = crypto.randomUUID().slice(0, 12);
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
 
-    // Store STEP file in Vercel Blob (public — local poller downloads directly)
+    // Store STEP file (private — accessed via API)
     const stepBlob = await put(`fea-jobs/${jobId}/${safeName}`, file, {
-      access: "public",
+      access: "private",
       contentType: "application/octet-stream",
     });
 
-    // Store job metadata in Blob
+    // Store job metadata
     const job = {
       jobId,
       status: "pending",
@@ -37,7 +37,7 @@ export const POST: APIRoute = async ({ request }) => {
     };
 
     await put(`fea-jobs/${jobId}/job.json`, JSON.stringify(job), {
-      access: "public",
+      access: "private",
       contentType: "application/json",
     });
 

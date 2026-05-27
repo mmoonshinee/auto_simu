@@ -6,6 +6,7 @@ import {
 import tailwindcss from "@tailwindcss/vite";
 import mdx from "@astrojs/mdx";
 import sitemap from "@astrojs/sitemap";
+import vercel from "@astrojs/vercel";
 import remarkToc from "remark-toc";
 import remarkCollapse from "remark-collapse";
 import {
@@ -18,6 +19,8 @@ import config from "./astro-paper.config";
 
 export default defineConfig({
   site: config.site.url,
+  output: "server",
+  adapter: vercel({ maxDuration: 30 }),
   integrations: [
     mdx(),
     sitemap({
@@ -51,6 +54,11 @@ export default defineConfig({
   },
   env: {
     schema: {
+      DEEPSEEK_API_KEY: envField.string({
+        access: "secret",
+        context: "server",
+        optional: true,
+      }),
       PUBLIC_GOOGLE_SITE_VERIFICATION: envField.string({
         access: "public",
         context: "client",

@@ -9,14 +9,14 @@ const title = "FEA Analysis | " + config.site.title;
   <main class="mx-auto max-w-3xl px-4 py-16 sm:px-6">
     <h1 class="text-3xl font-bold mb-2">FEA Analysis</h1>
     <p class="text-muted-foreground mb-8">
-      Upload a STEP file for automated structural analysis powered by ANSYS + Claude AI.
+      Upload a STEP file for AI-powered structural analysis. Files are processed locally in your browser and sent to DeepSeek for engineering insights.
     </p>
 
     <!-- Upload Area -->
     <div id="upload-zone"
          class="border-2 border-dashed border-border rounded-lg p-12 text-center cursor-pointer
                 hover:border-accent transition-colors mb-6">
-      <input type="file" id="file-input" accept=".step,.stp,.iges,.igs,.x_t,.x_b"
+      <input type="file" id="file-input" accept=".step,.stp,.iges,.igs,.x_t,.x_b,.txt,.csv,.json"
              class="hidden" />
       <div id="upload-prompt">
         <svg class="mx-auto h-12 w-12 text-muted-foreground mb-4" fill="none"
@@ -25,7 +25,7 @@ const title = "FEA Analysis | " + config.site.title;
                 d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
         </svg>
         <p class="text-lg font-medium">Drop STEP file here or click to browse</p>
-        <p class="text-sm text-muted-foreground mt-1">Max 50MB</p>
+        <p class="text-sm text-muted-foreground mt-1">Max 15MB</p>
       </div>
       <div id="upload-status" class="hidden">
         <p id="upload-filename" class="text-lg font-medium"></p>
@@ -38,7 +38,7 @@ const title = "FEA Analysis | " + config.site.title;
       <div id="chat-messages" class="h-96 overflow-y-auto p-4 space-y-3 bg-background">
         <div class="flex gap-2">
           <span class="text-accent font-bold shrink-0">AI:</span>
-          <p class="text-sm">File uploaded. What analysis do you need?</p>
+          <p class="text-sm">File loaded. What analysis do you need? Describe the load case, constraints, or ask about the geometry.</p>
         </div>
       </div>
       <div class="border-t border-border p-3 flex gap-2">
@@ -57,8 +57,8 @@ const title = "FEA Analysis | " + config.site.title;
 </Layout>
 
 <script>
-  const BACKEND = "http://localhost:8000";
-  let currentFileId: string | null = null;
+  let fileContent: string | null = null;
+  let fileName: string | null = null;
 
   const uploadZone = document.getElementById("upload-zone")!;
   const fileInput = document.getElementById("file-input")! as HTMLInputElement;
@@ -85,24 +85,24 @@ const title = "FEA Analysis | " + config.site.title;
   });
 
   async function handleFile(file: File) {
+    if (file.size > 15 * 1024 * 1024) {
+      alert("File too large. Max 15MB.");
+      return;
+    }
+
     uploadPrompt.classList.add("hidden");
     uploadStatus.classList.remove("hidden");
     uploadFilename.textContent = file.name;
-    uploadMessage.textContent = "Uploading...";
-
-    const form = new FormData();
-    form.append("file", file);
+    uploadMessage.textContent = "Reading file...";
 
     try {
-      const res = await fetch(`${BACKEND}/api/upload`, { method: "POST", body: form });
-      if (!res.ok) throw new Error((await res.json()).detail || "Upload failed");
-      const data = await res.json();
-      currentFileId = data.file_id;
-      uploadMessage.textContent = `${(data.size_bytes / 1024).toFixed(1)} kB uploaded. Ready for analysis.`;
+      fileContent = await file.text();
+      fileName = file.name;
+      const lineCount = fileContent.split("\n").length;
+      uploadMessage.textContent = `${(file.size / 1024).toFixed(1)} kB, ${lineCount} lines. Ready for analysis.`;
       chatContainer.classList.remove("hidden");
     } catch (err: any) {
-      uploadMessage.textContent = `Error: ${err.message}`;
-      uploadMessage.classList.add("text-red-500");
+      uploadMessage.textContent = `Error reading file: ${err.message}`;
     }
   }
 
@@ -116,11 +116,17 @@ const title = "FEA Analysis | " + config.site.title;
 
     const form = new FormData();
     form.append("message", msg);
-    if (currentFileId) form.append("file_id", currentFileId);
+    if (fileContent) {
+      form.append("file_content", fileContent);
+      form.append("file_id", fileName || "unknown");
+    }
 
     try {
-      const res = await fetch(`${BACKEND}/api/chat`, { method: "POST", body: form });
-      if (!res.ok) throw new Error((await res.json()).detail || "Chat error");
+      const res = await fetch("/api/chat", { method: "POST", body: form });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Chat error");
+      }
       const data = await res.json();
       addChatBubble("AI", data.reply);
     } catch (err: any) {

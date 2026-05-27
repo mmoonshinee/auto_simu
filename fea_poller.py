@@ -68,7 +68,7 @@ def fetch_pending_jobs():
 
 
 def download_step(job: dict) -> Path | None:
-    """Download STEP file via Vercel API (private Blob store)."""
+    """Download STEP file from public blob URL or via API."""
     job_id = job["jobId"]
     filename = job.get("filename", "model.step")
     dest = UPLOAD_DIR / f"{job_id}_{filename}"
@@ -77,7 +77,21 @@ def download_step(job: dict) -> Path | None:
         log(f"  File already downloaded: {dest}")
         return dest
 
-    log(f"  Downloading via API: {filename}")
+    log(f"  Downloading: {filename}")
+
+    # Try direct blob URL first (public store)
+    step_url = job.get("stepBlobUrl", "")
+    if step_url:
+        try:
+            resp = requests.get(step_url, timeout=120)
+            if resp.ok:
+                dest.write_bytes(resp.content)
+                log(f"  Downloaded: {len(resp.content) / 1024:.0f} kB → {dest.name}")
+                return dest
+        except Exception:
+            pass
+
+    # Fallback: download via API
     try:
         resp = requests.get(
             f"{VERCEL_URL}/api/fea/{job_id}/download",
@@ -92,7 +106,7 @@ def download_step(job: dict) -> Path | None:
             return None
         resp.raise_for_status()
         dest.write_bytes(resp.content)
-        log(f"  Downloaded: {len(resp.content) / 1024:.0f} kB → {dest.name}")
+        log(f"  Downloaded via API: {len(resp.content) / 1024:.0f} kB → {dest.name}")
         return dest
     except Exception as e:
         log(f"  Download failed: {e}")

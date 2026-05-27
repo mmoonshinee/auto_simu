@@ -22,11 +22,10 @@ export const GET: APIRoute = async ({ params }) => {
     }
     const job = await jobRes.json();
 
-    // Build image API URLs (relative paths — work on any domain)
+    // Build image API URLs
     const images: Record<string, string> = {};
-
     const prefix = `fea-jobs/${id}/`;
-    const { blobs } = await list({ prefix });
+    const { blobs } = await list({ limit: 1000, prefix });
     for (const b of blobs) {
       if (b.pathname.endsWith(".png") || b.pathname.endsWith(".jpg")) {
         const imgName = b.pathname.split("/").pop()?.replace(/\.(png|jpg)$/, "") || "";
@@ -73,14 +72,15 @@ export const POST: APIRoute = async ({ params, request }) => {
 
     for (const img of images) {
       const imgName = img.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-      await put(`fea-jobs/${id}/${imgName}`, img, {
-        access: "private",
+      const imgBlob = await put(`fea-jobs/${id}/${imgName}`, img, {
+        access: "public",
         contentType: img.type || "image/png",
       });
       const key = imgName.replace(".png", "").replace(".jpg", "");
-      uploadedImages[key] = `/api/fea/${id}/image/${key}`;
+      uploadedImages[key] = imgBlob.url;
     }
 
+    // Update job metadata
     const existingJobUrl = await findJobBlob(id);
     const currentJob = existingJobUrl
       ? await (await fetch(existingJobUrl)).json()
@@ -103,7 +103,7 @@ export const POST: APIRoute = async ({ params, request }) => {
     };
 
     await put(`fea-jobs/${id}/job.json`, JSON.stringify(updatedJob), {
-      access: "private",
+      access: "public",
       contentType: "application/json",
     });
 
@@ -124,7 +124,7 @@ export const POST: APIRoute = async ({ params, request }) => {
 async function findJobBlob(jobId: string): Promise<string | null> {
   try {
     const { blobs } = await list({ limit: 1000, prefix: `fea-jobs/${jobId}/job.json` });
-    if (blobs.length > 0) return blobs[0].downloadUrl;
+    if (blobs.length > 0) return blobs[0].url;
     return null;
   } catch {
     return null;

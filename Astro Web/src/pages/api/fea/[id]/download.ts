@@ -22,29 +22,28 @@ export const GET: APIRoute = async ({ params, request }) => {
       return new Response(JSON.stringify({ error: "Job not found" }), { status: 404 });
     }
 
-    const jobRes = await fetch(jobBlobs[0].downloadUrl);
+    const jobRes = await fetch(jobBlobs[0].url);
     const job = await jobRes.json();
 
-    // Find the STEP file in Blob
+    // Find the STEP file
     const { blobs: allBlobs } = await list({ limit: 1000, prefix: `fea-jobs/${id}/` });
-    let stepDownloadUrl = "";
+    let stepUrl = "";
     for (const b of allBlobs) {
       if (b.pathname.endsWith(".step") || b.pathname.endsWith(".stp")) {
-        stepDownloadUrl = b.downloadUrl;
+        stepUrl = b.url;
         break;
       }
     }
 
-    if (!stepDownloadUrl) {
-      // Fallback: try the stored stepBlobUrl (which is already a downloadUrl)
-      if (job.stepBlobUrl) {
-        stepDownloadUrl = job.stepBlobUrl;
-      } else {
-        return new Response(JSON.stringify({ error: "STEP file not found" }), { status: 404 });
-      }
+    if (!stepUrl) {
+      stepUrl = job.stepBlobUrl;
     }
 
-    const blobRes = await fetch(stepDownloadUrl);
+    if (!stepUrl) {
+      return new Response(JSON.stringify({ error: "STEP file not found" }), { status: 404 });
+    }
+
+    const blobRes = await fetch(stepUrl);
     if (!blobRes.ok) {
       return new Response(JSON.stringify({ error: "Failed to fetch STEP" }), { status: 500 });
     }

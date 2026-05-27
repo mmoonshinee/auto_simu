@@ -11,43 +11,27 @@ export const GET: APIRoute = async ({ request }) => {
       return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
     }
 
-    // Try reading master index first (fast path)
-    let allJobs: any[] = [];
-    const indexBlobName = "fea-jobs/index.json";
-    try {
-      const { blobs: indexBlobs } = await list({ limit: 1, prefix: indexBlobName });
-      if (indexBlobs.length > 0) {
-        const res = await fetch(indexBlobs[0].downloadUrl);
-        if (res.ok) {
-          allJobs = await res.json().catch(() => []);
+    const { blobs } = await list({ limit: 1000, prefix: "fea-jobs/" });
+    const jobBlobs = blobs.filter((b) => b.pathname.endsWith("/job.json"));
+
+    const jobs = await Promise.all(
+      jobBlobs.map(async (b) => {
+        try {
+          const res = await fetch(b.url);
+          return await res.json();
+        } catch {
+          return null;
         }
-      }
-    } catch {
-      // Fallback: scan individual job files
-    }
+      })
+    );
 
-    // Fallback: if index is empty, scan for individual job files
-    if (allJobs.length === 0) {
-      const { blobs } = await list({ limit: 1000, prefix: "fea-jobs/" });
-      const jobBlobs = blobs.filter((b) => b.pathname.endsWith("/job.json"));
-      const jobs = await Promise.all(
-        jobBlobs.map(async (b) => {
-          try {
-            const res = await fetch(b.downloadUrl);
-            return await res.json();
-          } catch {
-            return null;
-          }
-        })
-      );
-      allJobs = jobs.filter(Boolean);
-    }
+    const validJobs = jobs.filter(Boolean);
+    validJobs.sort((a: any, b: any) => (b.createdAt || "").localeCompare(a.createdAt || ""));
 
-    allJobs.sort((a: any, b: any) => (b.createdAt || "").localeCompare(a.createdAt || ""));
-    const pending = allJobs.filter((j: any) => j.status === "pending");
+    const pending = validJobs.filter((j: any) => j.status === "pending");
 
     return new Response(JSON.stringify({
-      total: allJobs.length,
+      total: validJobs.length,
       pending: pending.length,
       jobs: pending.map((j: any) => ({
         jobId: j.jobId,
@@ -55,6 +39,7 @@ export const GET: APIRoute = async ({ request }) => {
         material: j.material,
         forceDirection: j.forceDirection,
         forceMagnitude: j.forceMagnitude,
+        stepBlobUrl: j.stepBlobUrl,
         createdAt: j.createdAt,
       })),
     }), {

@@ -13,7 +13,7 @@ export const GET: APIRoute = async ({ params }) => {
       const pathName = b.pathname.split("/").pop() || "";
       const baseName = pathName.replace(/\.(png|jpg|jpeg)$/, "");
       if (baseName === name && /\.(png|jpg|jpeg)$/i.test(pathName)) {
-        const blobRes = await fetch(b.downloadUrl);
+        const blobRes = await fetch(b.url);
         if (!blobRes.ok) {
           return new Response(JSON.stringify({ error: "Failed to fetch image" }), { status: 500 });
         }
